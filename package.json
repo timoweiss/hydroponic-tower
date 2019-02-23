@@ -6,7 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
-    "watch:simulation": "nodemon -e ts --exec \"npm run simulation\"",
+    "watch:simulation": "nodemon -e ts,json --exec \"npm run simulation\"",
     "watch:start": "nodemon -e ts --exec \"npm start\"",
     "simulation": "npm run build && node index",
     "start": "npm run build && DEVICE=/dev/ttyUSB0 node index"

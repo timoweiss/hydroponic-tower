@@ -14,11 +14,14 @@ import { SystemState } from './state';
 import { createDataSimulation } from './dataSimulation';
 import { Readable } from 'stream';
 
+// This acts as a "dead man's switch" - eg. if the upper trickle bucket sensor fails
 const MAX_TIME_PUMP_ENABLED = 5 * 1000; // 5 sec
-// TODO: invert
+// The minimum water level allowed (before your pump runs dry)
 const CRITICAL_WATER_LEVEL = 7; // 10; // 10 cm from lid
+// The depth of the water reservoir in cm
 const MAX_WATER_LEVEL = 20;
-const PUMP_INTERVAL = 15 * 60 * 1000; // 15 mins
+// This allows to pause the pumping entirely for a certain amount of time (in ms)
+const PUMP_INTERVAL = 1 * 60 * 1000; // 15 mins
 
 enum MeasurementTopics {
   WATER_RESERVOIR = 'Distance',
@@ -50,7 +53,7 @@ interface IMeasurements {
 
 class Measurements extends EventEmitter {
   emit(topic: MeasurementTopics | string, value: any) {
-    console.info({ topic, value });
+    // console.info({ topic, value });
     switch (topic) {
       case MeasurementTopics.WATER_RESERVOIR:
         systemState.current.waterReservoirLevel = MAX_WATER_LEVEL - value;
@@ -63,11 +66,17 @@ class Measurements extends EventEmitter {
         console.warn('unknown topic', { topic, value });
     }
 
+    super.emit('state-change', systemState.current);
+
     const operation = deriveOperationFromState(systemState.current);
     return super.emit(
       operation.operationCommand,
       operation.operationCommand === 'STOP_PUMP' ? operation.reason : undefined
     );
+  }
+
+  onStateChange(stateChangeHandler: (state: SystemState) => any) {
+    super.on('state-change', stateChangeHandler);
   }
 
   onOperation(
@@ -85,7 +94,7 @@ const sleep = (ms: number) =>
 function createPump() {
   let _isRunning = false;
   let lastTimeStarted = 0;
-  return {
+  const pump = {
     getTimeLastStarted() {
       return lastTimeStarted;
     },
@@ -93,7 +102,6 @@ function createPump() {
       return _isRunning;
     },
     async start() {
-      console.log('starting pump');
       _isRunning = true;
       lastTimeStarted = Date.now();
 
@@ -104,14 +112,14 @@ function createPump() {
           MAX_TIME_PUMP_ENABLED,
           'ms, stopping it'
         );
-        this.stop();
+        pump.stop();
       }
     },
     async stop() {
-      console.log('stopping pump');
       _isRunning = false;
     }
   };
+  return pump;
 }
 
 // fs.watch('/dev', (eventType, filename) => {
@@ -163,34 +171,59 @@ function deriveOperationFromState(state: SystemState): Operation {
   };
 }
 
-async function initReading(dataStream: Readable) {
+async function initReading(
+  dataStream: Readable,
+  onStart?: (emitter: Measurements) => any
+) {
   const measurementEmitter = new Measurements();
 
   const pump = createPump();
-  measurementEmitter.onOperation('PUMP', () => pump.start());
-  measurementEmitter.onOperation('STOP_PUMP', operation => {
-    console.log('stopping pump', operation);
-    pump.stop();
+  measurementEmitter.onOperation('PUMP', () => {
+    // console.log('maybe starting pump');
+    if (!pump.isRunning()) {
+      console.log('starting pump');
+      pump.start();
+    }
   });
+  measurementEmitter.onOperation('STOP_PUMP', operation => {
+    // console.log('maybe stopping pump', operation);
+    if (pump.isRunning()) {
+      console.log('stopping pump', operation);
+      pump.stop();
+    }
+  });
+
+  onStart && onStart(measurementEmitter);
 
   for await (const chunk of chunksToLines(dataStream)) {
     if (chunk && chunk.length > 1) {
       dispatchData(chunk, measurementEmitter);
     }
   }
+  return measurementEmitter;
 }
-if (process.env.DEVICE) {
+
+export async function startSimulation() {
+  console.log('using data simulation');
+  const readStream = createDataSimulation();
+  console.log(
+    ',i',
+    await initReading(readStream, emitter => {
+      emitter.on('state-change', console.log);
+    })
+  );
+}
+
+export async function start() {
   try {
     const readStream = fs.createReadStream(
       process.env.DEVICE || '/dev/ttyUSB0'
     );
-    initReading(readStream);
+    console.log(await initReading(readStream));
   } catch (error) {
     console.error('unable to create readstream for device', process.env.DEVICE);
     process.exit(1);
   }
-} else {
-  console.log('using data simulation');
-  const readStream = createDataSimulation();
-  initReading(readStream);
 }
+
+startSimulation();
