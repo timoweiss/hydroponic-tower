@@ -13,6 +13,7 @@ import {
 import { SystemState } from './state';
 import { createDataSimulation } from './dataSimulation';
 import { Readable } from 'stream';
+import { createPump } from './pump';
 
 // This acts as a "dead man's switch" - eg. if the upper trickle bucket sensor fails
 const MAX_TIME_PUMP_ENABLED = 5 * 1000; // 5 sec
@@ -28,7 +29,7 @@ enum MeasurementTopics {
   TRICKLE_BUCKET = 'feucht'
 }
 
-const systemState = {
+export const systemState = {
   current: {
     waterReservoirLevel: 0,
     trickleBucket: 0
@@ -53,7 +54,7 @@ interface IMeasurements {
 
 class Measurements extends EventEmitter {
   emit(topic: MeasurementTopics | string, value: any) {
-    // console.info({ topic, value });
+    const currentStateStringified = JSON.stringify(systemState.current);
     switch (topic) {
       case MeasurementTopics.WATER_RESERVOIR:
         systemState.current.waterReservoirLevel = MAX_WATER_LEVEL - value;
@@ -66,7 +67,10 @@ class Measurements extends EventEmitter {
         console.warn('unknown topic', { topic, value });
     }
 
-    super.emit('state-change', systemState.current);
+    // only emit state-change if it has actually changed - not really fancy but should work for data only
+    if (currentStateStringified !== JSON.stringify(systemState.current)) {
+      super.emit('state-change', systemState.current);
+    }
 
     const operation = deriveOperationFromState(systemState.current);
     return super.emit(
@@ -86,40 +90,6 @@ class Measurements extends EventEmitter {
     console.log('registering', { cmd });
     super.on(cmd, operationHandler);
   }
-}
-
-const sleep = (ms: number) =>
-  new Promise(resolve => setTimeout(() => resolve(), ms));
-
-function createPump() {
-  let _isRunning = false;
-  let lastTimeStarted = 0;
-  const pump = {
-    getTimeLastStarted() {
-      return lastTimeStarted;
-    },
-    isRunning() {
-      return _isRunning;
-    },
-    async start() {
-      _isRunning = true;
-      lastTimeStarted = Date.now();
-
-      await sleep(MAX_TIME_PUMP_ENABLED);
-      if (_isRunning) {
-        console.log(
-          'pump was still running after',
-          MAX_TIME_PUMP_ENABLED,
-          'ms, stopping it'
-        );
-        pump.stop();
-      }
-    },
-    async stop() {
-      _isRunning = false;
-    }
-  };
-  return pump;
 }
 
 // fs.watch('/dev', (eventType, filename) => {
@@ -177,7 +147,7 @@ async function initReading(
 ) {
   const measurementEmitter = new Measurements();
 
-  const pump = createPump();
+  const pump = createPump({ MAX_TIME_PUMP_ENABLED });
   measurementEmitter.onOperation('PUMP', () => {
     // console.log('maybe starting pump');
     if (!pump.isRunning()) {
@@ -194,36 +164,33 @@ async function initReading(
   });
 
   onStart && onStart(measurementEmitter);
-
-  for await (const chunk of chunksToLines(dataStream)) {
+  chunksToLines(dataStream, chunk => {
     if (chunk && chunk.length > 1) {
       dispatchData(chunk, measurementEmitter);
     }
-  }
-  return measurementEmitter;
+  });
 }
 
-export async function startSimulation() {
+export async function startSimulation(
+  onStateChange: (state: SystemState) => any
+) {
   console.log('using data simulation');
   const readStream = createDataSimulation();
-  console.log(
-    ',i',
-    await initReading(readStream, emitter => {
-      emitter.on('state-change', console.log);
-    })
-  );
+  await initReading(readStream, emitter => {
+    emitter.on('state-change', onStateChange);
+  });
 }
 
-export async function start() {
+export async function start(onStateChange: (state: SystemState) => any) {
   try {
     const readStream = fs.createReadStream(
       process.env.DEVICE || '/dev/ttyUSB0'
     );
-    console.log(await initReading(readStream));
+    await initReading(readStream, emitter => {
+      emitter.on('state-change', onStateChange);
+    });
   } catch (error) {
     console.error('unable to create readstream for device', process.env.DEVICE);
     process.exit(1);
   }
 }
-
-startSimulation();

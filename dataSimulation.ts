@@ -3,14 +3,15 @@ import stream, { Readable } from 'stream';
 const simulation = require('./simulationData.json');
 
 export function createDataSimulation() {
+  const currentSimulation = JSON.parse(JSON.stringify(simulation));
   const readable = new stream.Readable();
   readable._read = () => null;
 
   const interval: NodeJS.Timeout = setInterval(() => {
-    if (!simulation.length) {
+    if (!currentSimulation.length) {
       return end(readable, interval);
     }
-    readable.push(simulation.shift() + '\n');
+    readable.push(currentSimulation.shift() + '\n');
   }, 500);
 
   setTimeout(() => {

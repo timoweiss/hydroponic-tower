@@ -9,13 +9,17 @@
     "watch:simulation": "nodemon -e ts,json --exec \"npm run simulation\"",
     "watch:start": "nodemon -e ts --exec \"npm start\"",
     "simulation": "npm run build && node index",
-    "start": "npm run build && DEVICE=/dev/ttyUSB0 node index"
+    "start": "npm run build && DEVICE=/dev/ttyUSB0 node index",
+    "server": "npm run build && node server",
+    "watch:server": "nodemon -e ts --exec \"npm run server\""
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "graphql-yoga": "^1.17.4"
+    "express": "^4.16.4",
+    "graphql-yoga": "^1.17.4",
+    "rpio": "^1.0.13"
   },
   "devDependencies": {
     "@types/node": "^11.9.5",
