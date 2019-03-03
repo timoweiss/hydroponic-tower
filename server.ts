@@ -1,6 +1,12 @@
 import { GraphQLServer, PubSub } from 'graphql-yoga';
-import { startSimulation, systemState, start } from '.';
+import { startSimulation, start } from '.';
 import express from 'express';
+import { SystemStateEmitter } from './state';
+
+interface IContext {
+  systemStateEmitter: SystemStateEmitter;
+  pubsub: PubSub;
+}
 
 const typeDefs = `
   type Query {
@@ -8,55 +14,74 @@ const typeDefs = `
   }
   type Subscription {
     onStateChange: State
-  }
-  type Mutation {
-    startSimulation:Boolean
-    start:Boolean
+    onConfigChange: Config
   }
 
   type State {
     waterReservoirLevel: Int
     trickleBucket: Int
+    pumpIsRunning: Boolean
+  }
+  type Config {
+    MAX_TIME_PUMP_ENABLED: Int
+    CRITICAL_WATER_LEVEL: Int
+    MAX_WATER_LEVEL: Int
+    PUMP_INTERVAL: Int
+    FLIP_INDICATION_DATE: Int
   }
 `;
 
-const pubsub = new PubSub();
-
 const resolvers = {
   Query: {
-    state() {
-      return systemState.current;
-    }
-  },
-  Mutation: {
-    start() {
-      start(state => pubsub.publish('state-change', { onStateChange: state }));
-      return true;
+    state(_: undefined, {}, ctx: IContext) {
+      return ctx.systemStateEmitter.systemState.current;
     },
-    startSimulation() {
-      startSimulation(state =>
-        pubsub.publish('state-change', { onStateChange: state })
-      );
-      return true;
+    config(_: undefined, {}, ctx: IContext) {
+      return ctx.systemStateEmitter.systemState.config;
     }
   },
+  Mutation: {},
   Subscription: {
     onStateChange: {
-      subscribe: (_: undefined, args: object, { pubsub }: any) => {
+      subscribe(_: undefined, {}, { pubsub }: IContext) {
         return pubsub.asyncIterator('state-change');
+      }
+    },
+    onConfigChange: {
+      subscribe(_: undefined, {}, { pubsub }: IContext) {
+        return pubsub.asyncIterator('config-change');
       }
     }
   }
 };
 
-const server = new GraphQLServer({
-  typeDefs,
-  resolvers,
-  context: { pubsub }
-});
-server.start(
-  { port: 3333, endpoint: '/graphql', playground: '/playground' },
-  config => console.log('Server is running on localhost:' + config.port)
-);
+async function setupSystem() {
+  const systemStateEmitter = await start();
+  const pubsub = new PubSub();
+  // map state to pubsub
+  systemStateEmitter.onStateChange(state =>
+    pubsub.publish('state-change', state)
+  );
+  // map config to pubsub
+  systemStateEmitter.onConfigChange(config =>
+    pubsub.publish('config-change', config)
+  );
 
-server.express.use('/', express.static('client'));
+  const server = new GraphQLServer({
+    typeDefs,
+    resolvers,
+    context: { pubsub, systemStateEmitter }
+  });
+  server.start(
+    { port: 3333, endpoint: '/graphql', playground: '/playground' },
+    async config => {
+      console.log('Server is running on localhost:' + config.port);
+    }
+  );
+
+  server.express.use('/', express.static('client'));
+}
+
+setupSystem()
+  .then(() => console.log('system started'))
+  .catch(error => console.error('system failed', error));

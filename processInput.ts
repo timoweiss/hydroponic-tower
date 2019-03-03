@@ -21,8 +21,18 @@ export async function chunksToLines(
   }
 }
 
-export function parseMessage(line: string) {
-  const [kind, measure] = line.split(':');
+export enum MeasurementTopics {
+  WATER_RESERVOIR = 'Distance',
+  TRICKLE_BUCKET = 'feucht'
+}
+
+export function parseMessage(
+  line: string
+): {
+  kind: MeasurementTopics;
+  measure: number;
+} {
+  const [kind, measure] = line.split(':') as [MeasurementTopics, string];
   return {
     kind,
     measure: parseInt(measure, 10)
