@@ -10,9 +10,9 @@ const sleep = (ms: number) =>
   new Promise(resolve => setTimeout(() => resolve(), ms));
 
 export function createPump({
-  MAX_TIME_PUMP_ENABLED
+  getMaxTimePumpEnabled
 }: {
-  MAX_TIME_PUMP_ENABLED: number;
+  getMaxTimePumpEnabled(): number;
 }) {
   let _isRunning = false;
   let lastTimeStarted = 0;
@@ -25,6 +25,7 @@ export function createPump({
       return _isRunning;
     },
     async start() {
+      const MAX_TIME_PUMP_ENABLED =  getMaxTimePumpEnabled()
       if (
         !_isRunning &&
         lastTimeStoppedByTimer &&

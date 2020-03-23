@@ -17,6 +17,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@types/cron": "^1.7.2",
+    "cron": "^1.8.2",
     "express": "^4.16.4",
     "graphql-yoga": "^1.17.4",
     "rpio": "^1.0.13"

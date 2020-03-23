@@ -3,7 +3,6 @@ export type OperationCommand = 'PUMP' | 'STOP_PUMP' | 'NO_OP';
 export enum OperationReasons {
   WATER_RESERVOIR_LEVEL_LOW = 'WATER_RESERVOIR_LEVEL_LOW',
   TRICKLE_BUCKET_FULL = 'TRICKLE_BUCKET_FULL',
-  NOT_IN_PUMP_INTERVAL = 'NOT_IN_PUMP_INTERVAL'
 }
 interface BaseOperation {
   operationCommand: OperationCommand;

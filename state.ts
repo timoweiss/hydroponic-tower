@@ -1,7 +1,7 @@
-import { isInTimeInterval } from './utils';
 import { Operation, OperationReasons, OperationCommand } from './operations';
 import { EventEmitter } from 'events';
 import { MeasurementTopics } from './processInput';
+import { createValueConfigStore } from './variables';
 
 export interface SystemState {
   current: {
@@ -9,13 +9,7 @@ export interface SystemState {
     trickleBucket: number;
     pumpIsRunning: boolean;
   };
-  config: {
-    MAX_TIME_PUMP_ENABLED: number;
-    CRITICAL_WATER_LEVEL: number;
-    MAX_WATER_LEVEL: number;
-    PUMP_INTERVAL: number;
-    FLIP_INDICATION_DATE: number;
-  };
+  config: ReturnType<typeof createValueConfigStore>;
 }
 
 export class SystemStateEmitter extends EventEmitter {
@@ -28,11 +22,11 @@ export class SystemStateEmitter extends EventEmitter {
     const { current, config } = this.systemState;
 
     const currentStateStringified = JSON.stringify(this.systemState.current);
-    const configStateStringified = JSON.stringify(this.systemState.config);
+    const configStateStringified = JSON.stringify(this.systemState.config.getAll());
 
     switch (topic) {
       case MeasurementTopics.WATER_RESERVOIR:
-        current.waterReservoirLevel = config.MAX_WATER_LEVEL - value;
+        current.waterReservoirLevel = config.get('MAX_WATER_LEVEL') - value;
         break;
 
       case MeasurementTopics.TRICKLE_BUCKET:
@@ -44,15 +38,15 @@ export class SystemStateEmitter extends EventEmitter {
       default:
         console.warn('unknown topic', { topic, value });
     }
-    const [dataHasChanged, confighasChanged] = [
+    const [dataHasChanged, configHasChanged] = [
       currentStateStringified !== JSON.stringify(current),
-      configStateStringified !== JSON.stringify(config)
+      configStateStringified !== JSON.stringify(config.getAll())
     ];
     // only emit state-change if it has actually changed - not really fancy but should work for data only
-    if (dataHasChanged || confighasChanged) {
+    if (dataHasChanged || configHasChanged) {
       // notify possible external listeners
       dataHasChanged && super.emit('state-change', current);
-      confighasChanged && super.emit('config-change', config);
+      configHasChanged && super.emit('config-change', config);
 
       const operation = deriveOperationFromState(this.systemState);
       return super.emit(
@@ -81,14 +75,19 @@ export class SystemStateEmitter extends EventEmitter {
   }
 }
 
-export function deriveOperationFromState(state: SystemState): Operation {
-  if (!isInTimeInterval(state.config.PUMP_INTERVAL)) {
-    return {
-      operationCommand: 'STOP_PUMP',
-      reason: OperationReasons.NOT_IN_PUMP_INTERVAL
-    };
+export function isItSafeToActivatePump(state: SystemState) {
+  if (state.current.trickleBucket > 0) {
+    console.log('it is not safe to activate the pump because the trickle bucket seems to be full');
+    return false;
   }
+  if(state.current.waterReservoirLevel <= state.config.get('CRITICAL_WATER_LEVEL')) {
+    console.log('it is not safe to activate the pump because of the water level is too low');
+    return false;
+  }
+  return true;
+}
 
+export function deriveOperationFromState(state: SystemState): Operation {
   if (state.current.trickleBucket > 0) {
     return {
       operationCommand: 'STOP_PUMP',
@@ -96,13 +95,16 @@ export function deriveOperationFromState(state: SystemState): Operation {
     };
   }
 
-  if (state.current.waterReservoirLevel <= state.config.CRITICAL_WATER_LEVEL) {
+  if (state.current.waterReservoirLevel <= state.config.get('CRITICAL_WATER_LEVEL')) {
     return {
       operationCommand: 'STOP_PUMP',
       reason: OperationReasons.WATER_RESERVOIR_LEVEL_LOW
     };
   }
 
+  if(!!true) {
+    return {operationCommand: 'NO_OP'}
+  }
   return {
     operationCommand: 'PUMP'
   };

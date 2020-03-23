@@ -12,7 +12,7 @@ export function createDataSimulation() {
       return end(readable, interval);
     }
     readable.push(currentSimulation.shift() + '\n');
-  }, 500);
+  }, 250);
 
   setTimeout(() => {
     end(readable, interval);
