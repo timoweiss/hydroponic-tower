@@ -19,9 +19,11 @@
   "dependencies": {
     "@types/cron": "^1.7.2",
     "cron": "^1.8.2",
+    "dotenv": "^8.2.0",
     "express": "^4.16.4",
-    "graphql-yoga": "^1.17.4",
-    "rpio": "^1.0.13"
+    "google-spreadsheet": "^3.0.10",
+    "graphql-yoga": "^1.18.3",
+    "rpio": "^2.1.1"
   },
   "devDependencies": {
     "@types/node": "^11.9.5",

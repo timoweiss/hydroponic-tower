@@ -94,6 +94,13 @@ export function deriveOperationFromState(state: SystemState): Operation {
       reason: OperationReasons.TRICKLE_BUCKET_FULL
     };
   }
+  // if the pump is running, keep it running regardless the waterReservoirLevel data
+  // this is a quickfix because the way we measure the level has big errors during the pump is running 
+  if(state.current.pumpIsRunning) {
+    return {
+      operationCommand: 'PUMP',
+    };
+  }
 
   if (state.current.waterReservoirLevel <= state.config.get('CRITICAL_WATER_LEVEL')) {
     return {

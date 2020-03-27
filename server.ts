@@ -1,8 +1,12 @@
+import * as path from 'path';
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
+
 import { GraphQLServer, PubSub } from 'graphql-yoga';
 import { startSimulation, start } from '.';
 import express from 'express';
 import { SystemStateEmitter } from './state';
 import { CronJob, CronTime } from 'cron';
+import { createSheetwriter } from './spreadsheet';
 
 interface IContext {
   systemStateEmitter: SystemStateEmitter;
@@ -82,10 +86,13 @@ const resolvers = {
 };
 
 async function setupSystem() {
+
+  const db = await createSheetwriter({ sheetId: '1x0TkrN9KrUCyN2vPA6AFZ9l03PkZc2u3qP1EPrw6NCc' })
   const { systemStateEmitter, cronJob } = await start();
   const pubsub = new PubSub();
   // map state to pubsub
   systemStateEmitter.onStateChange(state => {
+    db.addStats({ ...state, date: new Date() });
     console.log('state-change', { state })
     pubsub.publish('state-change', { onStateChange: state })
   });
